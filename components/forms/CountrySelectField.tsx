@@ -19,9 +19,11 @@ const getFlagEmoji = (countryCode: string) => {
 const CountrySelect = ({
     value,
     onChange,
+    id,
 }: {
     value: string;
     onChange: (value: string) => void;
+    id?: string;
 }) => {
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState('');
@@ -46,6 +48,7 @@ const CountrySelect = ({
                 !containerRef.current.contains(event.target as Node)
             ) {
                 setOpen(false);
+                setQuery('');
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
@@ -57,6 +60,7 @@ const CountrySelect = ({
     return (
         <div ref={containerRef} className="relative">
             <Button
+                id={id}
                 type="button"
                 variant="outline"
                 role="combobox"
@@ -150,7 +154,7 @@ export const CountrySelectField = ({
                     required: required ? `Please select ${label.toLowerCase()}` : false,
                 }}
                 render={({ field }) => (
-                    <CountrySelect value={field.value} onChange={field.onChange} />
+                    <CountrySelect value={field.value} onChange={field.onChange} id={name} />
                 )}
             />
             {error && <p className="text-sm text-red-500">{error.message}</p>}
