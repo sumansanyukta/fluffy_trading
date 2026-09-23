@@ -1,13 +1,15 @@
 'use client';
 
-import {useState} from "react";
 import {useForm} from "react-hook-form";
 import {Button} from "@/components/ui/button";
 import InputField from "@/components/forms/InputField";
 import FooterLink from "@/components/forms/FooterLink";
+import {signInWithEmail} from "@/lib/actions/auth.actions";
+import {useRouter} from "next/navigation";
+import {toast} from "sonner";
 
 const SignIn = () => {
-    const [submitted, setSubmitted] = useState(false);
+    const router = useRouter();
     const {
         register,
         handleSubmit,
@@ -21,11 +23,23 @@ const SignIn = () => {
     });
 
     const onSubmit = async (data: SignInFormData) => {
-        console.log('Sign in form submitted (auth not configured):', data);
+        try {
+            const result = await signInWithEmail(data);
 
-        await new Promise((resolve) => setTimeout(resolve, 500));
-
-        setSubmitted(true);
+            if(result.success) {
+                toast.success('Signed in successfully');
+                router.push('/');
+            } else {
+                toast.error('Sign in failed', {
+                    description: result.error ?? 'Invalid email or password.'
+                })
+            }
+        } catch (e) {
+            console.error(e);
+            toast.error('Sign in failed', {
+                description: e instanceof Error ? e.message : 'Failed to sign in.'
+            })
+        }
     }
 
     return (
@@ -61,12 +75,6 @@ const SignIn = () => {
                 <Button type="submit" disabled={isSubmitting} className="yellow-btn w-full mt-5">
                     {isSubmitting ? 'Signing In' : 'Sign In'}
                 </Button>
-
-                {submitted && (
-                    <p className="text-sm text-green-500 mt-4">
-                        Thanks! Signed in (demo). Authentication will be wired up here next.
-                    </p>
-                )}
 
                 <FooterLink text="Don't have an account?" linkText="Sign up" href="/sign-up" />
             </form>
