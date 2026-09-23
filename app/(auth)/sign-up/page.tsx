@@ -1,16 +1,18 @@
 'use client';
 
-import {useState} from "react";
 import {useForm} from "react-hook-form";
 import {Button} from "@/components/ui/button";
 import InputField from "@/components/forms/InputField";
 import SelectField from "@/components/forms/SelectField";
+import {INVESTMENT_GOALS, PREFERRED_INDUSTRIES, RISK_TOLERANCE_OPTIONS} from "@/lib/constants";
 import {CountrySelectField} from "@/components/forms/CountrySelectField";
 import FooterLink from "@/components/forms/FooterLink";
-import {INVESTMENT_GOALS, PREFERRED_INDUSTRIES, RISK_TOLERANCE_OPTIONS} from "@/lib/constants";
+import {signUpWithEmail} from "@/lib/actions/auth.actions";
+import {useRouter} from "next/navigation";
+import {toast} from "sonner";
 
 const SignUp = () => {
-    const [submitted, setSubmitted] = useState(false);
+    const router = useRouter()
     const {
         register,
         handleSubmit,
@@ -27,15 +29,24 @@ const SignUp = () => {
             preferredIndustry: 'Technology'
         },
         mode: 'onBlur'
-    });
+    }, );
 
     const onSubmit = async (data: SignUpFormData) => {
-        console.log('Sign up form submitted (auth not configured):', data);
-
-        // Simulate a short submit delay so the button state is visible
-        await new Promise((resolve) => setTimeout(resolve, 500));
-
-        setSubmitted(true);
+        try {
+            const result = await signUpWithEmail(data);
+            if(result.success) {
+                router.push('/');
+            } else {
+                toast.error('Sign up failed', {
+                    description: result.error ?? 'Failed to create an account.'
+                })
+            }
+        } catch (e) {
+            console.error(e);
+            toast.error('Sign up failed', {
+                description: e instanceof Error ? e.message : 'Failed to create an account.'
+            })
+        }
     }
 
     return (
@@ -49,22 +60,16 @@ const SignUp = () => {
                     placeholder="John Doe"
                     register={register}
                     error={errors.fullName}
-                    validation={{ required: 'Full name is required', minLength: { value: 2, message: 'Full name must be at least 2 characters' } }}
+                    validation={{ required: 'Full name is required', minLength: 2 }}
                 />
 
                 <InputField
                     name="email"
                     label="Email"
-                    placeholder="contact@fluffytrading.com"
+                    placeholder="contact@jsmastery.com"
                     register={register}
                     error={errors.email}
-                    validation={{
-                        required: 'Email address is required',
-                        pattern: {
-                            value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
-                            message: 'Please enter a valid email address'
-                        }
-                    }}
+                    validation={{ required: 'Email name is required', pattern: /^\w+@\w+\.\w+$/, message: 'Email address is required' }}
                 />
 
                 <InputField
@@ -74,7 +79,7 @@ const SignUp = () => {
                     type="password"
                     register={register}
                     error={errors.password}
-                    validation={{ required: 'Password is required', minLength: { value: 8, message: 'Password must be at least 8 characters' } }}
+                    validation={{ required: 'Password is required', minLength: 8 }}
                 />
 
                 <CountrySelectField
@@ -118,12 +123,6 @@ const SignUp = () => {
                 <Button type="submit" disabled={isSubmitting} className="yellow-btn w-full mt-5">
                     {isSubmitting ? 'Creating Account' : 'Start Your Investing Journey'}
                 </Button>
-
-                {submitted && (
-                    <p className="text-sm text-green-500 mt-4">
-                        Thanks! Your details were recorded. Authentication will be wired up here next.
-                    </p>
-                )}
 
                 <FooterLink text="Already have an account?" linkText="Sign in" href="/sign-in" />
             </form>

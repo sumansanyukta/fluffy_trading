@@ -3,7 +3,11 @@ import Image from "next/image";
 import UserDropdown from "@/components/ui/UserDropdown";
 import NavItems from "@/components/NavItems";
 
-const Header = () => {
+type HeaderProps = {
+    user?: { name?: string | null; email?: string | null } | null;
+};
+
+const Header = ({ user }: HeaderProps) => {
   return (
     <header className="sticky top-0 header">
       <div className="container header-wrapper">
@@ -13,7 +17,7 @@ const Header = () => {
         <nav className="hidden sm:block">
           <NavItems />
         </nav>
-        <UserDropdown />
+        <UserDropdown user={user} />
       </div>
     </header>
   )
