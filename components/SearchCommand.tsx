@@ -1,10 +1,11 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { CommandDialog, CommandEmpty, CommandInput, CommandList } from "@/components/ui/command"
+import { useEffect, useState, useRef } from "react"
+import { CommandDialog, CommandEmpty, CommandInput, CommandList, CommandGroup, CommandItem } from "@/components/ui/command"
 import {Button} from "@/components/ui/button";
 import {Loader2, Star, TrendingUp} from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {searchStocks} from "@/lib/actions/finnhub.actions";
 import {useDebounce} from "@/hooks/useDebounce";
 
@@ -13,6 +14,8 @@ export default function SearchCommand({ renderAs = 'button', label = 'Add stock'
   const [searchTerm, setSearchTerm] = useState("")
   const [loading, setLoading] = useState(false)
   const [stocks, setStocks] = useState<StockWithWatchlistStatus[]>(initialStocks ?? []);
+  const latestQueryRef = useRef("");
+  const router = useRouter();
 
   const isSearchMode = !!searchTerm.trim();
   const displayStocks = isSearchMode ? stocks : stocks?.slice(0, 10);
@@ -29,16 +32,24 @@ export default function SearchCommand({ renderAs = 'button', label = 'Add stock'
   }, [])
 
   const handleSearch = async () => {
+    const query = searchTerm.trim();
+    latestQueryRef.current = query;
     if(!isSearchMode) return setStocks(initialStocks ?? []);
 
     setLoading(true)
     try {
-        const results = await searchStocks(searchTerm.trim());
-        setStocks(results);
+        const results = await searchStocks(query);
+        if (latestQueryRef.current === query) {
+            setStocks(results);
+        }
     } catch {
-      setStocks([])
+        if (latestQueryRef.current === query) {
+            setStocks([])
+        }
     } finally {
-      setLoading(false)
+        if (latestQueryRef.current === query) {
+            setLoading(false)
+        }
     }
   }
 
@@ -48,10 +59,13 @@ export default function SearchCommand({ renderAs = 'button', label = 'Add stock'
     debouncedSearch();
   }, [searchTerm, debouncedSearch]);
 
-  const handleSelectStock = () => {
+  const handleSelectStock = (symbol?: string) => {
     setOpen(false);
     setSearchTerm("");
     setStocks(initialStocks ?? []);
+    if (symbol) {
+        router.push(`/stocks/${symbol}`);
+    }
   }
 
   return (
@@ -74,20 +88,24 @@ export default function SearchCommand({ renderAs = 'button', label = 'Add stock'
           {loading ? (
               <CommandEmpty className="search-list-empty">Loading stocks...</CommandEmpty>
           ) : displayStocks?.length === 0 ? (
-              <div className="search-list-indicator">
+              <CommandEmpty className="search-list-indicator">
                 {isSearchMode ? 'No results found' : 'No stocks available'}
-              </div>
+              </CommandEmpty>
             ) : (
-            <ul>
-              <div className="search-count">
-                {isSearchMode ? 'Search results' : 'Popular stocks'}
-                {` `}({displayStocks?.length || 0})
-              </div>
+            <CommandGroup heading={`${isSearchMode ? 'Search results' : 'Popular stocks'} (${displayStocks?.length || 0})`}>
               {displayStocks?.map((stock) => (
-                  <li key={stock.symbol} className="search-item">
+                  <CommandItem
+                      key={stock.symbol}
+                      value={stock.symbol}
+                      onSelect={() => handleSelectStock(stock.symbol)}
+                      className="search-item"
+                  >
                     <Link
                         href={`/stocks/${stock.symbol}`}
-                        onClick={handleSelectStock}
+                        onClick={(e) => {
+                            e.preventDefault();
+                            handleSelectStock(stock.symbol);
+                        }}
                         className="search-item-link"
                     >
                       <TrendingUp className="h-4 w-4 text-gray-500" />
@@ -103,9 +121,9 @@ export default function SearchCommand({ renderAs = 'button', label = 'Add stock'
                           stock.isInWatchlist ? 'fill-yellow-500 text-yellow-500' : 'text-gray-500'
                       }`} />
                     </Link>
-                  </li>
+                  </CommandItem>
               ))}
-            </ul>
+            </CommandGroup>
           )
           }
         </CommandList>

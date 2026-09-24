@@ -1,5 +1,6 @@
 'use server';
 
+import { cache } from 'react';
 import { getDateRange, validateArticle, formatArticle } from '@/lib/utils';
 import { POPULAR_STOCK_SYMBOLS } from '@/lib/constants';
 
@@ -97,7 +98,7 @@ export async function getNews(symbols?: string[]): Promise<MarketNewsArticle[]> 
   }
 }
 
-export async function searchStocks(query?: string): Promise<StockWithWatchlistStatus[]> {
+export const searchStocks = cache(async (query?: string): Promise<StockWithWatchlistStatus[]> => {
   try {
     const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
     if (!token) {
@@ -174,4 +175,4 @@ export async function searchStocks(query?: string): Promise<StockWithWatchlistSt
     console.error('Error in stock search:', err);
     return [];
   }
-}
+});
