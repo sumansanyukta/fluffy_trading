@@ -3,12 +3,12 @@ import Link from 'next/link';
 import { Star } from 'lucide-react';
 import WatchlistTable from '@/components/WatchlistTable';
 import { auth } from '@/lib/better-auth/auth';
-import { getWatchlistByEmail } from '@/lib/actions/watchlist.actions';
+import { getWatchlistByUserId } from '@/lib/actions/watchlist.actions';
 
 const Watchlist = async () => {
     const session = await auth.api.getSession({ headers: await headers() });
-    const email = session?.user?.email ?? '';
-    const watchlist = email ? await getWatchlistByEmail(email) : [];
+    const userId = session?.user?.id ?? '';
+    const watchlist = userId ? await getWatchlistByUserId(userId) : [];
 
     if (watchlist.length === 0) {
         return (

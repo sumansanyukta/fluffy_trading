@@ -3,7 +3,7 @@ import TradingViewWidget from '@/components/TradingViewWidget';
 import WatchlistButton from '@/components/WatchlistButton';
 import { auth } from '@/lib/better-auth/auth';
 import { searchStocks } from '@/lib/actions/finnhub.actions';
-import { getWatchlistSymbolsByEmail } from '@/lib/actions/watchlist.actions';
+import { getWatchlistSymbolsByUserId } from '@/lib/actions/watchlist.actions';
 import {
     BASELINE_WIDGET_CONFIG,
     CANDLE_CHART_WIDGET_CONFIG,
@@ -23,9 +23,8 @@ const StockDetails = async ({ params }: StockDetailsPageProps) => {
         searchStocks(ticker),
     ]);
 
-    const watchlistSymbols = session?.user?.email
-        ? await getWatchlistSymbolsByEmail(session.user.email)
-        : [];
+    const userId = session?.user?.id ?? '';
+    const watchlistSymbols = userId ? await getWatchlistSymbolsByUserId(userId) : [];
     const isInWatchlist = watchlistSymbols.includes(ticker);
     const company = stocks.find((stock) => stock.symbol === ticker)?.name ?? ticker;
 

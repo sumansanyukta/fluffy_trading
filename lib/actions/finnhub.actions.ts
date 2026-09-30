@@ -1,11 +1,26 @@
 'use server';
 
 import { cache } from 'react';
-import { getDateRange, validateArticle, formatArticle } from '@/lib/utils';
+import { getDateRange, validateArticle, formatArticle, delay } from '@/lib/utils';
 import { POPULAR_STOCK_SYMBOLS } from '@/lib/constants';
 
 const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
 const NEXT_PUBLIC_FINNHUB_API_KEY = process.env.NEXT_PUBLIC_FINNHUB_API_KEY ?? '';
+
+// The free tier allows 60 requests per minute in a fixed window. Responses carry
+// `x-ratelimit-remaining` and `x-ratelimit-reset`, so a 429 can be retried at the
+// exact moment the window rolls over instead of guessing a backoff.
+const RATE_LIMIT_RETRIES = 1;
+const RATE_LIMIT_MIN_WAIT_MS = 250;
+// Retrying only pays off when the window is about to roll over. If the reset is
+// further out than this there is no point holding the render open, so the request
+// fails fast and the row degrades to its cached/N.A. values instead.
+const RATE_LIMIT_MAX_WAIT_MS = 2_000;
+
+type FinnhubFetchError = Error & {
+  status?: number;
+  rateLimitResetAt?: number;
+};
 
 async function fetchJSON<T>(url: string, revalidateSeconds?: number): Promise<T> {
   const options: RequestInit & { next?: { revalidate?: number } } = revalidateSeconds
@@ -15,9 +30,27 @@ async function fetchJSON<T>(url: string, revalidateSeconds?: number): Promise<T>
   const res = await fetch(url, options);
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`Fetch failed ${res.status}: ${text}`);
+    const error = new Error(`Fetch failed ${res.status}: ${text}`) as FinnhubFetchError;
+    error.status = res.status;
+    const reset = res.headers.get('x-ratelimit-reset');
+    const resetAt = reset ? Number(reset) * 1000 : NaN;
+    if (Number.isFinite(resetAt)) error.rateLimitResetAt = resetAt;
+    throw error;
   }
   return (await res.json()) as T;
+}
+
+// Milliseconds to wait before retrying a rate limited request, or null when the
+// failure should not be retried - either because it was not a 429, or because the
+// window is too far from resetting for waiting to be worthwhile.
+function getRateLimitWaitMs(error: unknown): number | null {
+  const { status, rateLimitResetAt } = (error ?? {}) as FinnhubFetchError;
+  if (status !== 429 || rateLimitResetAt === undefined) return null;
+
+  const waitMs = rateLimitResetAt - Date.now();
+  if (waitMs > RATE_LIMIT_MAX_WAIT_MS) return null;
+
+  return Math.max(waitMs, RATE_LIMIT_MIN_WAIT_MS);
 }
 
 export { fetchJSON };
@@ -26,16 +59,36 @@ function getFinnhubToken(): string {
   return process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
 }
 
-export async function getQuote(symbol: string): Promise<QuoteData> {
+// Shared by the per-symbol endpoints below. Retries only on 429, and only for as
+// long as the reset header says it is worth waiting.
+async function fetchSymbolEndpoint<T>(
+  endpoint: string,
+  symbol: string,
+  revalidateSeconds: number
+): Promise<T> {
   const token = getFinnhubToken();
   if (!token) {
-    console.error('getQuote error:', new Error('FINNHUB API key is not configured'));
-    return {};
+    console.error(`Finnhub ${endpoint} error:`, new Error('FINNHUB API key is not configured'));
+    return {} as T;
   }
 
+  const url = `${FINNHUB_BASE_URL}/${endpoint}?symbol=${encodeURIComponent(symbol.toUpperCase())}&token=${token}`;
+
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fetchJSON<T>(url, revalidateSeconds);
+    } catch (e) {
+      const waitMs = getRateLimitWaitMs(e);
+      if (waitMs === null || attempt >= RATE_LIMIT_RETRIES) throw e;
+      console.warn(`Finnhub ${endpoint} rate limited for ${symbol}, retrying in ${waitMs}ms`);
+      await delay(waitMs);
+    }
+  }
+}
+
+export async function getQuote(symbol: string): Promise<QuoteData> {
   try {
-    const url = `${FINNHUB_BASE_URL}/quote?symbol=${encodeURIComponent(symbol.toUpperCase())}&token=${token}`;
-    return await fetchJSON<QuoteData>(url, 60);
+    return await fetchSymbolEndpoint<QuoteData>('quote', symbol, 120);
   } catch (e) {
     console.error('Error fetching quote for', symbol, e);
     return {};
@@ -43,15 +96,8 @@ export async function getQuote(symbol: string): Promise<QuoteData> {
 }
 
 export async function getStockProfile(symbol: string): Promise<ProfileData> {
-  const token = getFinnhubToken();
-  if (!token) {
-    console.error('getStockProfile error:', new Error('FINNHUB API key is not configured'));
-    return {};
-  }
-
   try {
-    const url = `${FINNHUB_BASE_URL}/stock/profile2?symbol=${encodeURIComponent(symbol.toUpperCase())}&token=${token}`;
-    return await fetchJSON<ProfileData>(url, 3600);
+    return await fetchSymbolEndpoint<ProfileData>('stock/profile2', symbol, 3600);
   } catch (e) {
     console.error('Error fetching profile for', symbol, e);
     return {};
@@ -59,15 +105,8 @@ export async function getStockProfile(symbol: string): Promise<ProfileData> {
 }
 
 export async function getStockMetrics(symbol: string): Promise<FinancialsData> {
-  const token = getFinnhubToken();
-  if (!token) {
-    console.error('getStockMetrics error:', new Error('FINNHUB API key is not configured'));
-    return {};
-  }
-
   try {
-    const url = `${FINNHUB_BASE_URL}/stock/metric?symbol=${encodeURIComponent(symbol.toUpperCase())}&token=${token}`;
-    return await fetchJSON<FinancialsData>(url, 3600);
+    return await fetchSymbolEndpoint<FinancialsData>('stock/metric', symbol, 3600);
   } catch (e) {
     console.error('Error fetching metrics for', symbol, e);
     return {};
